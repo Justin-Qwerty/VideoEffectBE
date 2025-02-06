@@ -215,6 +215,7 @@ def reconstructSub():
                                         ### THIS WILL MERGE ALL THE CLIPPED VIDEOS AND MAKE THE FINAL CLIP WITH THE MP3 SOUND ###
 
 def mergeVideos():
+    clip0 = VideoFileClip("../Img/TempImg/output.mp4")
     clip1 = VideoFileClip("../Vid/Clipped/VidClip0.mp4")
     clip2 = VideoFileClip("../Vid/Clipped/VidClip1.mp4")
     clip3 = VideoFileClip("../Vid/Clipped/VidClip2.mp4")
@@ -223,7 +224,8 @@ def mergeVideos():
     
     
     clipsWithTransition = [
-        clip1.with_end(7),
+        clip0.with_end(10),
+        clip1.with_end(7).with_effects([vfx.CrossFadeIn(1), vfx.CrossFadeOut(1)]),
         clip2.with_start(1).with_effects([vfx.CrossFadeIn(1), vfx.CrossFadeOut(1)]),
         clip3.with_effects([vfx.CrossFadeIn(1)])
 
@@ -295,7 +297,7 @@ def generateImg(text,title):
     downloadResponse = requests.get(imageGenerated)
     print (response.data[0].url)
     if downloadResponse.status_code == 200:
-        with open(f"{path}/{title}.png", "wb") as file:
+        with open(f"{path}/generatedPicture.png", "wb") as file:
             file.write(downloadResponse.content)
     print("Image downloaded successfully!")
 
@@ -303,7 +305,7 @@ def generateImg(text,title):
                                         ### USED TO VIEW IMAGE ON THE FRONTEND ###
 
 def streamImage(text):
-    with open(f"../Img/TempImg/{text}.png", "rb") as img_file:
+    with open(f"../Img/TempImg/generatedPicture.png", "rb") as img_file:
         while chunk := img_file.read(4096):
             yield chunk
 
@@ -380,7 +382,7 @@ def generateImage():
 
 @app.route("/downloadImage" , methods=["POST"])
 def download_image():
-    return send_file("../Img/TempImg/test.png", as_attachment=True)
+    return send_file("../Img/TempImg/generatedPicture.png", as_attachment=True)
 
 
 
@@ -388,7 +390,7 @@ def download_image():
 
                                         ### THIS AREA IS FOR TESTING PURPOSE ONLY ###
 
-imageTest = "../Img/TempImg/test.png"
+imageTest = "../Img/TempImg/generatedPicture.png"
 
 
 
@@ -424,33 +426,60 @@ def zoom_in_effect(clip=imageTest, zoom_ratio=0.04):
     return clip.transform(effect)
 
 
-size = (1920, 1080)
-
-
-
-
-
-ImageClipTest = ImageClip(imageTest , duration=10)
-
-
-
-
-
-
+def aiPromptforPhoto(subject, script):
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content":"you are a genius prompt engineer for dall e "
+            },
+            {
+                "role": "user",
+                "content": f"create a prompt with the subject {subject} and will be suit to the script of an instagram reel the script is {script} the prompt will be used as the subject for creating the cover photo you should only use less than 15 words. your response should be a little generic and no names or proper noun should be used since this will be used in generating image"
+            }
+            ]
+    )
+    return completion.choices[0].message.content
 
 def zoomingImage():
-    clip_img = ImageClip("../Img/TempImg/test.png", duration=10)
-    videoTest = zoom_in_effect(ImageClipTest, 0.04)
-    clipWithEffects = clip_img.with_effects([vfx.Resize(2)])
+    clip_img = ImageClip("../Img/TempImg/generatedPicture.png", duration=10)
+    videoTest = zoom_in_effect(clip_img, 0.1)
     videoTest.write_videofile('../Img/TempImg/output.mp4', fps=24)
 
-def zoomingVid():
-    clip = VideoFileClip("../Img/TempImg/output.mp4")
+
+def imgResize():
+    img = Image.open("../Img/TempImg/generatedPicture.png")
+    img_resized = img.resize((540, 960), Image.LANCZOS)
+    img_resized.save("../Img/TempImg/generatedPicture.png")
 
 @app.route("/test", methods=["POST"])  
 def test():
+    path = "../Vid/Clipped/tempFolder"
     data = request.form
+    script = aiCompletion(data["subject"])
+    keywords = aiKeywords(script)
+    keywordsList = keywords.split(" ")
+    subjectforImage = aiPromptforPhoto(keywordsList[0], script)
+    responsePrompt = aiPrompt(subjectforImage)
+    generateImg(responsePrompt, subjectforImage)
+    imgResize()
     zoomingImage()
-    print("message : Test generated successfully")
+    RetrieveVideos(keywordsList[0], 1, 0)
+    clipVideo(0)
+    RetrieveVideos(keywordsList[1], 1, 1)
+    clipVideo(1)
+    RetrieveVideos(keywordsList[2], 1, 2)
+    clipVideo(2)
+    text_to_speech_file(script)
+    srtCreate()
+    mergeVideos()
+    reconstructSub()
+    burnSubtitle()
+    file_path = "../Vid/Clipped/FinalClipwithSub.mp4"
+    new_path = f"{path}/tempFile.mp4"
+    os.mkdir(path)
+    shutil.copy(file_path, new_path)
+    print("message : Test generated successfully", "subjectforImage")
     return jsonify({"message" : "Test generated successfully"}, 200)
 
