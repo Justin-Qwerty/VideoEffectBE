@@ -219,6 +219,7 @@ def mergeVideos():
     clip1 = VideoFileClip("../Vid/Clipped/VidClip0.mp4")
     clip2 = VideoFileClip("../Vid/Clipped/VidClip1.mp4")
     clip3 = VideoFileClip("../Vid/Clipped/VidClip2.mp4")
+    clip4 = VideoFileClip("../Img/TempImg/output.mp4")
     
     audioDuration = getdurationAudio()
     
@@ -227,7 +228,8 @@ def mergeVideos():
         clip0.with_end(10),
         clip1.with_end(7).with_effects([vfx.CrossFadeIn(1), vfx.CrossFadeOut(1)]),
         clip2.with_start(1).with_effects([vfx.CrossFadeIn(1), vfx.CrossFadeOut(1)]),
-        clip3.with_effects([vfx.CrossFadeIn(1)])
+        clip3.with_effects([vfx.CrossFadeIn(1), vfx.CrossFadeOut(1)]),
+        clip4.with_effects([vfx.CrossFadeIn(1)])
 
     ]
     audioClip = "../MP3/test2Subs.mp3"
@@ -321,7 +323,11 @@ def postTest():
     script = aiCompletion(data["subject"])
     keywords = aiKeywords(script)
     keywordsList = keywords.split(" ")
-    keywordListVar = keywords.split(" ")
+    subjectforImage = aiPromptforPhoto(keywordsList[0], script)
+    responsePrompt = aiPrompt(subjectforImage)
+    generateImg(responsePrompt, subjectforImage)
+    imgResize()
+    zoomingImage()
     RetrieveVideos(keywordsList[0], 1, 0)
     clipVideo(0)
     RetrieveVideos(keywordsList[1], 1, 1)
@@ -455,31 +461,7 @@ def imgResize():
 
 @app.route("/test", methods=["POST"])  
 def test():
-    path = "../Vid/Clipped/tempFolder"
-    data = request.form
-    script = aiCompletion(data["subject"])
-    keywords = aiKeywords(script)
-    keywordsList = keywords.split(" ")
-    subjectforImage = aiPromptforPhoto(keywordsList[0], script)
-    responsePrompt = aiPrompt(subjectforImage)
-    generateImg(responsePrompt, subjectforImage)
-    imgResize()
-    zoomingImage()
-    RetrieveVideos(keywordsList[0], 1, 0)
-    clipVideo(0)
-    RetrieveVideos(keywordsList[1], 1, 1)
-    clipVideo(1)
-    RetrieveVideos(keywordsList[2], 1, 2)
-    clipVideo(2)
-    text_to_speech_file(script)
-    srtCreate()
-    mergeVideos()
-    reconstructSub()
-    burnSubtitle()
-    file_path = "../Vid/Clipped/FinalClipwithSub.mp4"
-    new_path = f"{path}/tempFile.mp4"
-    os.mkdir(path)
-    shutil.copy(file_path, new_path)
+    
     print("message : Test generated successfully", "subjectforImage")
     return jsonify({"message" : "Test generated successfully"}, 200)
 
