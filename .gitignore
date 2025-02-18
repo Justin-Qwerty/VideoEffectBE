@@ -1,2 +1,6 @@
 .venv
 .env
+gif_frame
+tempMP3
+processed_videos
+uploads
