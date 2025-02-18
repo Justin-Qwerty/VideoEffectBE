@@ -553,9 +553,6 @@ def AddEffect(input, output, mp3path,safename):
     print("message : Test generated successfully", "subjectforImage")
 
 
-                                                    ### THIS IS THE PATH FOR ADDING EFFECTS TO THE VIDEOS ###
-
-
                                                      ###   THIS IS FOR ZOOMING EFFECT FROM PICTURE TO VIDEO     ###
 
 def zoom_in_effect(clip=imageTest, zoom_ratio=0.04):
@@ -622,7 +619,58 @@ def imgResize():
     img = Image.open("../Img/TempImg/generatedPicture.png")
     img_resized = img.resize((540, 960), Image.LANCZOS)
     img_resized.save("../Img/TempImg/generatedPicture.png")
+                                                        ### THIS IS FOR ADDING EFFECTS ON VIDEO ENDPOINT ###
 
+                                                        
+@app.route("/test", methods=["POST"])  
+def test():
+
+    if os.path.exists(UPLOAD_FOLDER):
+        shutil.rmtree(UPLOAD_FOLDER)
+    if os.path.exists(MP3_temp):
+        shutil.rmtree(MP3_temp)
+    if os.path.exists(OUTPUT_FOLDER):
+        shutil.rmtree(OUTPUT_FOLDER)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    os.makedirs(MP3_temp, exist_ok=True)
+    os.makedirs(DOWNLOAD_PATH, exist_ok=True)
+    logo = request.files.getlist("image")[0]
+    print(logo)
+    logo.save(f"../Img/TempImg/{logo.filename}.png")
+    logo_path = f"../Img/TempImg/{logo.filename}.png"
+    if "videos" not in request.files:
+        return jsonify({"error": "No files uploaded!"}), 400
+    logoOscillate(logo_path)
+    uploaded_files = request.files.getlist("videos")  # Get all uploaded videos
+    download_links = []
+    def sanitize_filename(filename):
+        return re.sub(r'[^\w\-_\.]', '_', filename)  # Keep letters, numbers, _, -, .
+
+
+    for video in uploaded_files:
+        unique_id = str(uuid.uuid4())[:8]  # Generate a unique filename
+        original_filename = video.filename
+        safe_filename = sanitize_filename(original_filename)
+        save_path = os.path.join(UPLOAD_FOLDER, unique_id + "_" + safe_filename)
+        output_path = os.path.join(OUTPUT_FOLDER, unique_id +"_"+ safe_filename)
+        safeName = f"{unique_id}_{safe_filename}"
+        mp3_path = os.path.join(unique_id)
+
+        video.save(save_path)  # Save uploaded file
+
+        # Process each video asynchronously
+        thread = threading.Thread(target=AddEffect, args=(save_path, output_path, mp3_path,safeName))
+        thread.start()
+        
+        # Generate a download link for processed file
+        download_link = f"http://127.0.0.1:5000/download/{unique_id}_{safe_filename}"
+        download_links.append(download_link)
+    time.sleep(30)
+    return jsonify({
+        "message": "Videos are being processed in the background.",
+        "download_links": download_links
+    }), 200
 
 
                                                         ###     THIS AREA IS FOR TESTING PURPOSE ONLY   ###
