@@ -1,4 +1,4 @@
-from flask import Flask, send_file, request, after_this_request, Response, jsonify, stream_with_context
+from flask import Flask, send_file, request, after_this_request, Response, jsonify, stream_with_context, send_from_directory
 from dotenv import load_dotenv
 import time
 import re
@@ -7,7 +7,7 @@ import requests
 from openai import OpenAI
 import random
 from moviepy.config import check
-from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, CompositeAudioClip, TextClip, CompositeVideoClip, ImageClip
+from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, vfx, CompositeAudioClip, TextClip, CompositeVideoClip, ImageClip,afx,VideoClip, ImageSequenceClip
 from moviepy.video.tools.subtitles import SubtitlesClip
 from moviepy.video.fx import Crop
 import uuid
@@ -20,8 +20,9 @@ import srt
 import shutil
 from flask_cors import CORS
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import math
+import threading
 
 
                                                     ### THIS IS FOR PROCESS EVERY API KEY AND ASSIGNING VARIABLES ARE HERE ###
@@ -39,6 +40,7 @@ aai.settings.api_key= assemblyai_api_key
 transcriber = aai.Transcriber()
 font_path = '../Font/bold_font.ttf'
 keywordListVar = {}
+
 
 
                                         ### THIS USES OPENAI FOR CREATING THE SUBJECT FOR THE SCRIPT . THE TEXT IS THE VARIABLE THAT COMES FROM THE FRONTEND  ###
@@ -394,12 +396,167 @@ def download_image():
 
 
 
-                                        ### THIS AREA IS FOR TESTING PURPOSE ONLY ###
+                                        
 
 imageTest = "../Img/TempImg/generatedPicture.png"
+UPLOAD_FOLDER = "../uploads"
+OUTPUT_FOLDER = "../processed_videos"
+MP3_temp ="../MP3/tempMP3"
+DOWNLOAD_PATH = f"{OUTPUT_FOLDER}/tempFolder"
+
+                                        ### THIS IS FOR OSCILLATING THE LOGO ###
+def logoOscillate(logo_path="../Img/logo.png"):
+    print("hello1")
+    WIDTH, HEIGHT = 300, 300 
+    
+    GREEN_SCREEN = (0, 255, 0)
+    FIXED_LOGO_SIZE = (200, 200) 
+    def frame_function(t):
+        frequency = 0.2  # One pulse per second
+        coef = 0.5 * (1 + math.sin(2 * math.pi * frequency * t))  # Oscillating value
+        scale_factor = 0.5 + 0.5 * coef  # Pulsating scale between 50% and 100%
+
+        # Load the logo
+        logo = Image.open(logo_path).convert("RGBA")
+
+        width, height = logo.size
+
+        # Determine the shortest side to crop a centered square
+        min_side = min(width, height)
+        left = (width - min_side) // 2
+        top = (height - min_side) // 2
+        right = left + min_side
+        bottom = top + min_side
+        # Crop the logo to a centered square
+        logo_cropped = logo.crop((left, top, right, bottom))
+        logo_resized_fixed = logo_cropped.resize(FIXED_LOGO_SIZE, Image.LANCZOS)
+
+        # Compute new logo size based on pulsating effect
+        new_width = int(FIXED_LOGO_SIZE[0] * scale_factor)
+        new_height = int(FIXED_LOGO_SIZE[1] * scale_factor)
+        logo_resized = logo_resized_fixed.resize((new_width, new_height), Image.LANCZOS)
+
+        # Create the green screen canvas
+        img = Image.new("RGBA", (WIDTH, HEIGHT), GREEN_SCREEN)
+
+        # Calculate position to center the logo
+        x = (WIDTH - new_width) // 2
+        y = (HEIGHT - new_height) // 2
+
+        # Paste the pulsating logo onto the green screen
+        img.paste(logo_resized, (x, y), logo_resized)
+
+        return np.array(img)
+    
+    def make_transparent_gif(input_gif, output_gif, transparent_color=(0, 255, 0), tolerance=30):
+        img = Image.open(input_gif)
+        frames = []
+
+        for frame in ImageSequence.Iterator(img):
+            frame = frame.convert("RGBA")  # Convert to RGBA mode
+            new_frame = Image.new("RGBA", frame.size)
+
+            # Process pixel transparency
+            pixels = frame.getdata()
+            new_pixels = []
+
+            for pixel in pixels:
+                r, g, b, a = pixel
+                # Check if the color is within tolerance range
+                if (abs(r - transparent_color[0]) <= tolerance and
+                    abs(g - transparent_color[1]) <= tolerance and
+                    abs(b - transparent_color[2]) <= tolerance):
+                    new_pixels.append((0, 0, 0, 0))  # Fully transparent
+                else:
+                    new_pixels.append(pixel)
+
+            new_frame.putdata(new_pixels)
+            frames.append(new_frame)
+
+        # Save the transparent GIF with proper disposal mode
+        frames[0].save(output_gif, save_all=True, append_images=frames[1:], loop=0, disposal=2)
+    
+    print("test")
+    clipPulse = VideoClip(frame_function, duration=10)
+    clipPulse.write_gif("../Vid/Clipped/circle.gif", fps=24,)
+    transparent_gif_path = "../Vid/Clipped/test.gif"
+    make_transparent_gif("../Vid/Clipped/circle.gif", transparent_gif_path)
 
 
+                ### THIS IS FOR ADDING EFFECTS FROM THE VIDEO ADDING MP3 AND SOME COLOR CHANGES ###
 
+def AddEffect(input, output, mp3path,safename):
+    
+    targetWidth = 540
+    targetHeight = 960
+    inputCrop = f"{input}_crop.mp4"
+    clip = VideoFileClip(input)
+    clip_resized = clip.resized(height=targetHeight)
+    crop_width = clip_resized.size[0]
+    if crop_width > targetWidth:
+        excess_width = (crop_width - targetWidth) / 2
+        clip_cropped = clip_resized.cropped(x1=excess_width, x2=crop_width - excess_width)
+    else:
+        clip_cropped = clip_resized
+
+    clip_cropped.write_videofile(inputCrop, codec="libx264", fps=30)
+
+    clip1 = VideoFileClip(inputCrop)
+    clip2 = VideoFileClip(inputCrop)
+    clip3 = clip1.subclipped(0, 2)
+    reversespeed1 = clip1.subclipped(2,2.1)
+    reversespeed2 = clip1.subclipped(2.1,2.2)
+    reversespeed3 = clip1.subclipped(2.2,2.3)
+    reversespeed4 = clip1.subclipped(2.3,2.4)
+    reversespeed5 = clip1.subclipped(2.4,2.5)
+    
+    clipsWithTransition = [
+    
+    clip3.with_effects([vfx.BlackAndWhite(), vfx.CrossFadeOut(0.3), vfx.FadeIn(.5)]),
+    reversespeed1.with_effects([vfx.MultiplyColor(2.5)]),
+    reversespeed2.with_effects([vfx.MultiplyColor(2.0)]),
+    reversespeed3.with_effects([vfx.MultiplyColor(1.8)]),
+    reversespeed4.with_effects([vfx.MultiplyColor(1.5)]),
+    reversespeed5.with_effects([vfx.MultiplyColor(1.15)]),
+    clip2.subclipped(2.5, clip2.duration)
+    ]
+    finalClip = concatenate_videoclips(clipsWithTransition, method="compose")
+    speedupClip = finalClip.with_effects([vfx.MultiplySpeed(1.05), vfx.CrossFadeOut(1)])
+
+    frames_dir = "gif_frames"
+    os.makedirs(frames_dir, exist_ok=True)
+    gif = Image.open("../Vid/Clipped/test.gif")
+    frame_paths = []
+    for i, frame in enumerate(ImageSequence.Iterator(gif)):
+        frame = frame.convert("RGBA")  # Ensure it has an alpha channel
+        frame_path = os.path.join(frames_dir, f"frame_{i:03d}.png")
+        frame.save(frame_path, "PNG")  # Save each frame as PNG to keep transparency
+        frame_paths.append(frame_path)
+
+    gif_clip = ImageSequenceClip(frame_paths, fps=24)
+    gif_clip2 = gif_clip.with_effects([vfx.Loop(duration=speedupClip.duration), vfx.Margin(top=700, opacity=0)])
+    finalfinalClip = CompositeVideoClip([speedupClip,gif_clip2.with_position(("center", "top"), relative=True)])
+    clipAudio = finalfinalClip.audio
+    bgAudio = AudioFileClip("../MP3/bgmusic.mp3")
+    audioClips = [
+        clipAudio,
+        bgAudio.with_effects([afx.MultiplyVolume(0.15), afx.AudioLoop(duration=clipAudio.duration)]).subclipped(0,clipAudio.duration)
+    ]
+    finalAudioClip = CompositeAudioClip(audioClips)
+    finalAudioClip.write_audiofile(f"../MP3/tempMP3/{mp3path}.mp3")
+    audioClip = f"../MP3/tempMP3/{mp3path}.mp3"
+    finalfinalClip.write_videofile(output, audio=audioClip)
+    shutil.copy(output, f"{DOWNLOAD_PATH}/{safename}")
+    clip.close()
+    clip1.close()
+    clip2.close()
+    print("message : Test generated successfully", "subjectforImage")
+
+
+                                                    ### THIS IS THE PATH FOR ADDING EFFECTS TO THE VIDEOS ###
+
+
+                                                     ###   THIS IS FOR ZOOMING EFFECT FROM PICTURE TO VIDEO     ###
 
 def zoom_in_effect(clip=imageTest, zoom_ratio=0.04):
     def effect(get_frame, t):
@@ -432,6 +589,8 @@ def zoom_in_effect(clip=imageTest, zoom_ratio=0.04):
     return clip.transform(effect)
 
 
+                                                    ###THIS IS FOR MAKING THE AI PROMPT AUTOMATIC TO DALL E###
+
 def aiPromptforPhoto(subject, script):
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -448,20 +607,129 @@ def aiPromptforPhoto(subject, script):
     )
     return completion.choices[0].message.content
 
+
+                                ### CALLS THE FUNCTION ZOOMING EFFECT ###
+
 def zoomingImage():
     clip_img = ImageClip("../Img/TempImg/generatedPicture.png", duration=10)
     videoTest = zoom_in_effect(clip_img, 0.1)
     videoTest.write_videofile('../Img/TempImg/output.mp4', fps=24)
 
 
+                                ### USE TO RESIZE THE IMAGE ###
+
 def imgResize():
     img = Image.open("../Img/TempImg/generatedPicture.png")
     img_resized = img.resize((540, 960), Image.LANCZOS)
     img_resized.save("../Img/TempImg/generatedPicture.png")
 
-@app.route("/test", methods=["POST"])  
-def test():
-    
-    print("message : Test generated successfully", "subjectforImage")
-    return jsonify({"message" : "Test generated successfully"}, 200)
 
+
+                                                        ###     THIS AREA IS FOR TESTING PURPOSE ONLY   ###
+
+
+
+                                                        ###     THIS IS FOR OSCILLATING TEXT            ###
+def textOsccilate():
+
+    TEXT = "HELLO!"
+    WIDTH, HEIGHT = 300, 300 
+    Logo_path = "../Img/logo.png"
+    RED = (255, 0, 0)
+    FIXED_LOGO_SIZE = (200, 200) 
+
+    def frame_function(t):
+        frequency = .2  # One pulse per second
+        coef = 0.5 * (1 + math.sin(2 * math.pi * frequency * t))  # Oscillating value
+        font_size = int(46 + 53 * coef)  # Text size varies between 20 and 80
+        GREEN_SCREEN = (0, 255, 0, 255)
+        # Create image canvas
+        img = Image.new("RGB", (WIDTH, HEIGHT), GREEN_SCREEN)
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)  # Change font if needed
+        except:
+            font = ImageFont.load_default()
+        text_width, text_height = font.getbbox(TEXT)[2:]
+
+        x = (WIDTH - text_width) / 2
+        y = (HEIGHT - text_height) / 2
+
+        # Draw pulsating text
+        
+        draw.text((x, y), TEXT, fill=RED, font=font)
+
+        
+        return np.array(img)
+    
+    def make_transparent_gif(input_gif, output_gif, transparent_color=(0, 255, 0)):
+        img = Image.open(input_gif)
+        frames = []
+
+        for frame in ImageSequence.Iterator(img):
+            frame = frame.convert("RGBA")
+            datas = frame.getdata()
+            new_data = []
+            
+            for item in datas:
+                # If the pixel is green, make it transparent
+                if item[:3] == transparent_color:
+                    new_data.append((0, 0, 0, 0))  # Fully transparent pixel
+                else:
+                    new_data.append(item)
+
+            frame.putdata(new_data)
+            frames.append(frame)
+
+        # Save as transparent GIF
+        frames[0].save(output_gif, save_all=True, append_images=frames[1:], loop=0, disposal=2)
+
+
+    clipPulse = VideoClip(frame_function, duration=10)
+    clipPulse.write_gif("../Vid/Clipped/circle.gif", fps=24,)
+    transparent_gif_path = "../Vid/Clipped/test.gif"
+    make_transparent_gif("../Vid/Clipped/circle.gif", transparent_gif_path)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.route("/test2", methods=["POST"])
+def test2():
+    logo = request.files.getlist("image")[0]
+    print(logo)
+    logo.save(f"../Img/TempImg/{logo.filename}.png")
+    logo_path = f"../Img/TempImg/{logo.filename}.png"
+    logoOscillate(logo_path)
+    print("hello")
+    return jsonify({
+        "message": "Videos are being processed in the background.",
+        "download_links" : "hello",
+    }), 200
+
+@app.route("/download/<path:filename>", methods=["GET"])
+def download_video(filename):
+    file_path = os.path.join(DOWNLOAD_PATH, filename)
+
+    if not os.path.exists(file_path):
+        print("File not found!")  # Debugging message
+        return("not available")
+
+    
+    return send_from_directory(DOWNLOAD_PATH, filename, as_attachment=True)
+
+@app.route("/")
+def hello():
+    return  '<a href="http://87.106.135.198:5555" target="_blank">Go to this site</a>'
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5151)
