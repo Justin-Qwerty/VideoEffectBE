@@ -1,6 +1,6 @@
 .venv
 .env
-gif_frame
+gif_frames
 tempMP3
 processed_videos
 uploads

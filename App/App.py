@@ -23,6 +23,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import math
 import threading
+import tempfile
 
 
                                                     ### THIS IS FOR PROCESS EVERY API KEY AND ASSIGNING VARIABLES ARE HERE ###
@@ -407,7 +408,11 @@ DOWNLOAD_PATH = f"{OUTPUT_FOLDER}/tempFolder"
                                         ### THIS IS FOR OSCILLATING THE LOGO ###
 def logoOscillate(logo_path="../Img/logo.png"):
     print("hello1")
-    WIDTH, HEIGHT = 300, 300 
+    
+    if logo_path == "../Img/logo.png":
+        WIDTH, HEIGHT = 1, 1 
+    else:
+        WIDTH, HEIGHT = 250, 250 
     
     GREEN_SCREEN = (0, 255, 0)
     FIXED_LOGO_SIZE = (200, 200) 
@@ -534,7 +539,7 @@ def AddEffect(input, output, mp3path,safename):
         frame_paths.append(frame_path)
 
     gif_clip = ImageSequenceClip(frame_paths, fps=24)
-    gif_clip2 = gif_clip.with_effects([vfx.Loop(duration=speedupClip.duration), vfx.Margin(top=700, opacity=0)])
+    gif_clip2 = gif_clip.with_effects([vfx.Loop(duration=speedupClip.duration), vfx.Margin(top=750, opacity=0)])
     finalfinalClip = CompositeVideoClip([speedupClip,gif_clip2.with_position(("center", "top"), relative=True)])
     clipAudio = finalfinalClip.audio
     bgAudio = AudioFileClip("../MP3/bgmusic.mp3")
@@ -621,7 +626,7 @@ def imgResize():
     img_resized.save("../Img/TempImg/generatedPicture.png")
                                                         ### THIS IS FOR ADDING EFFECTS ON VIDEO ENDPOINT ###
 
-                                                        
+
 @app.route("/test", methods=["POST"])  
 def test():
 
@@ -635,13 +640,17 @@ def test():
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(MP3_temp, exist_ok=True)
     os.makedirs(DOWNLOAD_PATH, exist_ok=True)
-    logo = request.files.getlist("image")[0]
-    print(logo)
-    logo.save(f"../Img/TempImg/{logo.filename}.png")
-    logo_path = f"../Img/TempImg/{logo.filename}.png"
+    if len(request.files.getlist("image")) > 0:
+        logo = request.files.getlist("image")[0]
+        logo.save(f"../Img/TempImg/{logo.filename}.png")
+        logo_path = f"../Img/TempImg/{logo.filename}.png"
+        logoOscillate(logo_path)
+    else:
+        logoOscillate()
+
     if "videos" not in request.files:
         return jsonify({"error": "No files uploaded!"}), 400
-    logoOscillate(logo_path)
+    
     uploaded_files = request.files.getlist("videos")  # Get all uploaded videos
     download_links = []
     def sanitize_filename(filename):
@@ -664,14 +673,23 @@ def test():
         thread.start()
         
         # Generate a download link for processed file
-        download_link = f"http://127.0.0.1:5000/download/{unique_id}_{safe_filename}"
+        
+        download_link = f"http://127.0.0.1:5151/download/{unique_id}_{safe_filename}"
         download_links.append(download_link)
-    time.sleep(30)
-    return jsonify({
-        "message": "Videos are being processed in the background.",
-        "download_links": download_links
-    }), 200
-
+    if len(uploaded_files) > 20:
+        time.sleep(20 * 60)
+    else:
+        time.sleep(len(uploaded_files) * 60)
+    if len(uploaded_files) <= 1:
+        return jsonify({
+            "message": "Videos are being processed in the background.",
+            "download_links": download_links
+        }), 200
+    else:
+        return jsonify({
+            "message": "Videos are being processed in the background.",
+            "download_links": ["http://127.0.0.1:5151/downloadFolder"]
+        }), 200
 
                                                         ###     THIS AREA IS FOR TESTING PURPOSE ONLY   ###
 
@@ -774,6 +792,15 @@ def download_video(filename):
 
     
     return send_from_directory(DOWNLOAD_PATH, filename, as_attachment=True)
+
+@app.route("/downloadFolder", methods=["GET"])
+def download_zip():
+    folder_path= "../processed_videos/tempFolder"
+    folder_name = os.path.basename(folder_path)
+    temp_directory = tempfile.mkdtemp()
+    zip_path = os.path.join(temp_directory, f"{folder_name}.zip")
+    shutil.make_archive(zip_path.replace('.zip', ''), 'zip',folder_path)
+    return send_file (zip_path, as_attachment=True, download_name="compiled_processed_videos.zip")
 
 @app.route("/")
 def hello():
